@@ -430,10 +430,22 @@ def delete_order(orders, payments, activities):
 
     record_id = read_int("Order ID: ", 1)
 
-    for payment in payments.all_active():
-        if payment["order_id"] == record_id:
-            print("Cannot delete: this order is used by an active payment.")
-            return
+    # Delete related payments first, so the order can be removed
+    # without leaving orphan payment records.
+    related_payments = [
+        payment["id"]
+        for payment in payments.all_active()
+        if payment["order_id"] == record_id
+    ]
+
+    for payment_id in related_payments:
+        payments.delete(payment_id)
+        activities.append((
+            datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "DELETE",
+            "Payment",
+            payment_id,
+        ))
 
     if orders.delete(record_id):
         activities.append((
