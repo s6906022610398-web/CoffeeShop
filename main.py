@@ -1,10 +1,13 @@
 from datetime import datetime
 
-from config import REPORT_FILE
 from order import OrderTable, create_order
 from payment import PAYMENT_METHODS, PaymentTable, create_payment
 from product import ProductTable, create_product
-from report import generate_report
+from report import (
+    generate_product_report,
+    generate_order_report,
+    generate_payment_report,
+)
 
 
 def read_int(prompt, minimum=None):
@@ -605,20 +608,32 @@ def main():
             view_menu(products, orders, payments)
 
         elif choice == "5":
-            path = generate_report(
-                products,
-                orders,
-                payments,
-                activities,
-            )
-            print(f"Report generated: {path}")
+            while True:
+                print("\n=== Generate Report ===")
+                print("1. Product Report")
+                print("2. Order Report")
+                print("3. Payment Report")
+                print("0. Back")
 
-            activities.append((
-                datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                "REPORT",
-                "Report",
-                0,
-            ))
+                report_choice = input("Choose: ").strip()
+
+                if report_choice == "1":
+                    path = generate_product_report(products)
+                    print(f"Report generated: {path}")
+
+                elif report_choice == "2":
+                    path = generate_order_report(products, orders)
+                    print(f"Report generated: {path}")
+
+                elif report_choice == "3":
+                    path = generate_payment_report(payments)
+                    print(f"Report generated: {path}")
+
+                elif report_choice == "0":
+                    break
+
+                else:
+                    print("Invalid choice.")
 
         elif choice == "0":
             print("Goodbye.")
