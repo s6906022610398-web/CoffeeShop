@@ -65,7 +65,7 @@ def print_products(products):
         print("\nNo products found.")
         return
 
-        print("\n" + "-" * 90)
+    print("\n" + "-" * 90)
     print(
         f"{'ID':<8}"
         f"{'Name':<25}"
@@ -88,7 +88,12 @@ def print_products(products):
 
     print("-" * 90)
 
-    print("-" * 75)
+
+def format_order_items(row):
+    return ", ".join(
+        f"{product_id}x{quantity}"
+        for product_id, quantity in row.get("items", [])
+    )
 
 
 def print_orders(orders):
@@ -98,31 +103,30 @@ def print_orders(orders):
         print("\nNo orders found.")
         return
 
-    print("\n" + "-" * 105)
+    print("\n" + "-" * 110)
     print(
         f"{'ID':<8}"
         f"{'Customer':<12}"
-        f"{'Product':<10}"
-        f"{'Qty':<8}"
+        f"{'Products':<28}"
         f"{'Total':<14}"
         f"{'Date':<20}"
         f"{'Status':>10}"
     )
-    print("-" * 105)
+    print("-" * 110)
 
     for row in rows:
         status = "Active" if row["status"] == 1 else "Deleted"
         print(
             f"{row['id']:<8}"
             f"{row['customer_id']:<12}"
-            f"{row['product_id']:<10}"
-            f"{row['quantity']:<8}"
+            f"{format_order_items(row):<28}"
             f"{row['total']:<14.2f}"
             f"{row['date']:<20}"
             f"{status:>10}"
         )
 
-    print("-" * 105)
+    print("-" * 110)
+
 
 def print_payments(payments):
     rows = payments.all_active()
@@ -131,21 +135,30 @@ def print_payments(payments):
         print("\nNo payments found.")
         return
 
-    print("\n" + "-" * 90)
-    print(f"{'ID':<10}{'Order':<10}{'Method':<12}{'Amount':<14}{'Date':<20}")
-    print("-" * 90)
+    print("\n" + "-" * 105)
+    print(
+        f"{'ID':<10}"
+        f"{'Order':<10}"
+        f"{'Method':<12}"
+        f"{'Amount':<14}"
+        f"{'Date':<20}"
+        f"{'Status':>10}"
+    )
+    print("-" * 105)
 
     for row in rows:
+        status = "Paid" if row["status"] == 1 else "Deleted"
+
         print(
             f"{row['id']:<10}"
             f"{row['order_id']:<10}"
             f"{row['method']:<12}"
             f"{row['amount']:<14.2f}"
             f"{row['date']:<20}"
+            f"{status:>10}"
         )
 
-    print("-" * 90)
-
+    print("-" * 105)
 
 def add_product(products, activities):
     print("\n--- Add Product ---")
@@ -166,33 +179,53 @@ def add_product(products, activities):
         print(f"Error: {exc}")
 
 
-def add_order(products, orders, activities):
+def add_order(products, orders, payments, activities):
     print("\n--- Add Order ---")
     customer_id = read_int("Customer ID: ", 1)
+    items = []
+    total = 0.0
 
-    print_products(products)
+    while len(items) < 3:
+        print_products(products)
+        product_id = read_int("Product ID: ", 1)
+        product = products.get(product_id)
 
-    product_id = read_int("Product ID: ", 1)
-    product = products.get(product_id)
+        if product is None:
+            print("Product ID not found.")
+            continue
 
-    if product is None:
-        print("Product ID not found.")
-        return
+        quantity = read_int("Quantity: ", 1)
 
-    quantity = read_int("Quantity: ", 1)
-    total = product["price"] * quantity
+        # If the same product is selected again, combine the quantity.
+        found = False
+        for index, (pid, qty) in enumerate(items):
+            if pid == product_id:
+                items[index] = (pid, qty + quantity)
+                found = True
+                break
 
+        if not found:
+            items.append((product_id, quantity))
+
+        total = sum(products.get(pid)["price"] * qty for pid, qty in items)
+        print(f"Current Total = {total:.2f} THB")
+
+        if len(items) == 3:
+            print("Maximum 3 different products per order.")
+            break
+
+        more = input("Add another product? (Y/N): ").strip().upper()
+        if more != "Y":
+            break
+
+    print("\nOrder Summary")
+    for product_id, quantity in items:
+        product = products.get(product_id)
+        print(f"- {product['name']} x{quantity}")
     print(f"Total = {total:.2f} THB")
 
     try:
-        record_id = orders.add(
-            create_order(
-                customer_id,
-                product_id,
-                quantity,
-                total,
-            )
-        )
+        record_id = orders.add(create_order(customer_id, items, total))
 
         activities.append((
             datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -203,8 +236,32 @@ def add_order(products, orders, activities):
 
         print(f"Order added successfully. ID = {record_id}")
 
+        pay_now = input("Pay now? (Y/N): ").strip().upper()
+        if pay_now == "Y":
+            add_payment_for_order(record_id, total, payments, activities)
+
     except ValueError as exc:
         print(f"Error: {exc}")
+
+
+def add_payment_for_order(order_id, amount, payments, activities):
+    print("\n--- Payment ---")
+    print(f"Order ID: {order_id}")
+    print(f"Amount = {amount:.2f} THB")
+    method = choose_payment_method()
+
+    try:
+        record_id = payments.add(create_payment(order_id, method, amount))
+        activities.append((
+            datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "ADD",
+            "Payment",
+            record_id,
+        ))
+        print(f"Payment added successfully. ID = {record_id}")
+    except ValueError as exc:
+        print(f"Error: {exc}")
+
 
 def add_payment(orders, payments, activities):
     print("\n--- Add Payment ---")
@@ -273,37 +330,29 @@ def update_order(products, orders, activities):
         print("Order ID not found.")
         return
 
-    customer_id = read_int(
-        f"Customer ID [{old['customer_id']}]: ",
-        1,
-    )
+    customer_id = read_int(f"Customer ID [{old['customer_id']}]: ", 1)
+    items = []
 
-    print_products(products)
+    while len(items) < 3:
+        print_products(products)
+        product_id = read_int("Product ID: ", 1)
+        product = products.get(product_id)
+        if product is None:
+            print("Product ID not found.")
+            continue
 
-    product_id = read_int(
-        f"Product ID [{old['product_id']}]: ",
-        1,
-    )
-    product = products.get(product_id)
+        quantity = read_int("Quantity: ", 1)
+        items.append((product_id, quantity))
 
-    if product is None:
-        print("Product ID not found.")
-        return
+        if len(items) == 3:
+            break
+        more = input("Add another product? (Y/N): ").strip().upper()
+        if more != "Y":
+            break
 
-    quantity = read_int(
-        f"Quantity [{old['quantity']}]: ",
-        1,
-    )
-    total = product["price"] * quantity
-
-    updated = create_order(
-        customer_id,
-        product_id,
-        quantity,
-        total,
-    )
+    total = sum(products.get(pid)["price"] * qty for pid, qty in items)
+    updated = create_order(customer_id, items, total)
     updated["date"] = old["date"]
-
     orders.update(record_id, updated)
 
     activities.append((
@@ -312,8 +361,8 @@ def update_order(products, orders, activities):
         "Order",
         record_id,
     ))
-
     print("Order updated successfully.")
+
 
 def update_payment(orders, payments, activities):
     print("\n--- Update Payment ---")
@@ -359,7 +408,7 @@ def delete_product(products, orders, activities):
     record_id = read_int("Product ID: ", 1)
 
     for order in orders.all_active():
-        if order["product_id"] == record_id:
+        if any(pid == record_id for pid, qty in order.get("items", [])):
             print("Cannot delete: this product is used by an active order.")
             return
 
@@ -429,7 +478,7 @@ def add_menu(products, orders, payments, activities):
         if choice == "1":
             add_product(products, activities)
         elif choice == "2":
-            add_order(products, orders, activities)
+            add_order(products, orders, payments, activities)
         elif choice == "3":
             add_payment(orders, payments, activities)
         elif choice == "0":
