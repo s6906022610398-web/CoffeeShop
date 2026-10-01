@@ -98,21 +98,31 @@ def print_orders(orders):
         print("\nNo orders found.")
         return
 
-    print("\n" + "-" * 90)
-    print(f"{'ID':<8}{'Product':<10}{'Qty':<8}{'Total':<14}{'Date':<20}")
-    print("-" * 90)
+    print("\n" + "-" * 105)
+    print(
+        f"{'ID':<8}"
+        f"{'Customer':<12}"
+        f"{'Product':<10}"
+        f"{'Qty':<8}"
+        f"{'Total':<14}"
+        f"{'Date':<20}"
+        f"{'Status':>10}"
+    )
+    print("-" * 105)
 
     for row in rows:
+        status = "Active" if row["status"] == 1 else "Deleted"
         print(
             f"{row['id']:<8}"
+            f"{row['customer_id']:<12}"
             f"{row['product_id']:<10}"
             f"{row['quantity']:<8}"
             f"{row['total']:<14.2f}"
             f"{row['date']:<20}"
+            f"{status:>10}"
         )
 
-    print("-" * 90)
-
+    print("-" * 105)
 
 def print_payments(payments):
     rows = payments.all_active()
@@ -158,6 +168,8 @@ def add_product(products, activities):
 
 def add_order(products, orders, activities):
     print("\n--- Add Order ---")
+    customer_id = read_int("Customer ID: ", 1)
+
     print_products(products)
 
     product_id = read_int("Product ID: ", 1)
@@ -174,18 +186,25 @@ def add_order(products, orders, activities):
 
     try:
         record_id = orders.add(
-            create_order(product_id, quantity, total)
+            create_order(
+                customer_id,
+                product_id,
+                quantity,
+                total,
+            )
         )
+
         activities.append((
             datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "ADD",
             "Order",
             record_id,
         ))
+
         print(f"Order added successfully. ID = {record_id}")
+
     except ValueError as exc:
         print(f"Error: {exc}")
-
 
 def add_payment(orders, payments, activities):
     print("\n--- Add Payment ---")
@@ -254,20 +273,37 @@ def update_order(products, orders, activities):
         print("Order ID not found.")
         return
 
+    customer_id = read_int(
+        f"Customer ID [{old['customer_id']}]: ",
+        1,
+    )
+
     print_products(products)
 
-    product_id = read_int(f"Product ID [{old['product_id']}]: ", 1)
+    product_id = read_int(
+        f"Product ID [{old['product_id']}]: ",
+        1,
+    )
     product = products.get(product_id)
 
     if product is None:
         print("Product ID not found.")
         return
 
-    quantity = read_int(f"Quantity [{old['quantity']}]: ", 1)
+    quantity = read_int(
+        f"Quantity [{old['quantity']}]: ",
+        1,
+    )
     total = product["price"] * quantity
 
-    updated = create_order(product_id, quantity, total)
+    updated = create_order(
+        customer_id,
+        product_id,
+        quantity,
+        total,
+    )
     updated["date"] = old["date"]
+
     orders.update(record_id, updated)
 
     activities.append((
@@ -276,8 +312,8 @@ def update_order(products, orders, activities):
         "Order",
         record_id,
     ))
-    print("Order updated successfully.")
 
+    print("Order updated successfully.")
 
 def update_payment(orders, payments, activities):
     print("\n--- Update Payment ---")

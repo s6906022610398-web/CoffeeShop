@@ -3,7 +3,7 @@ from datetime import datetime
 from config import APP_VERSION, REPORT_FILE
 
 
-def line(char="-", width=90):
+def line(char="-", width=100):
     return char * width
 
 
@@ -24,16 +24,41 @@ def generate_report(products, orders, payments, activities):
     order_stats = orders.stats()
     payment_stats = payments.stats()
 
+    customer_summary = {}
+
+    for order in order_rows:
+        customer_id = order["customer_id"]
+
+        if customer_id not in customer_summary:
+            customer_summary[customer_id] = {
+                "total_cups": 0,
+                "products": {},
+            }
+
+        customer_summary[customer_id]["total_cups"] += order["quantity"]
+
+        product = products.get(order["product_id"])
+        product_name = (
+            product["name"]
+            if product is not None
+            else f"Product {order['product_id']}"
+        )
+
+        customer_summary[customer_id]["products"][product_name] = (
+            customer_summary[customer_id]["products"].get(product_name, 0)
+            + order["quantity"]
+        )
+
     lines = [
-        "=" * 90,
-        "                 Coffee Shop Management System - Summary Report",
-        "=" * 90,
+        "=" * 100,
+        "                         Coffee Shop Management System - Summary Report",
+        "=" * 100,
         f"Generated At : {datetime.now():%Y-%m-%d %H:%M:%S}",
         f"App Version  : {APP_VERSION}",
         "Endianness   : Little-Endian",
         "Encoding     : UTF-8 (Fixed-length Record)",
         "Data Files   : products.dat, orders.dat, payments.dat",
-        "=" * 90,
+        "=" * 100,
         "",
         "=== 1. สินค้าทั้งหมด (Products) ===",
         line(),
@@ -55,23 +80,24 @@ def generate_report(products, orders, payments, activities):
         line(),
         "",
         "=== 2. สรุปคำสั่งซื้อ (Orders) ===",
-        "-" * 95,
-        "| Order ID | Product ID | Quantity | Total (THB) | Date                | Status  |",
-        "-" * 95,
+        "-" * 105,
+        "| Order ID | Customer ID | Product ID | Quantity | Total (THB) | Date                | Status  |",
+        "-" * 105,
     ]
 
     for row in order_rows:
         lines.append(
-            f"| {row['id']:<8} | {row['product_id']:<10} | "
-            f"{row['quantity']:<8} | {row['total']:>11.2f} | "
-            f"{row['date']:<19} | {status_text(row['status']):<7} |"
+            f"| {row['id']:<8} | {row['customer_id']:<11} | "
+            f"{row['product_id']:<10} | {row['quantity']:<8} | "
+            f"{row['total']:>11.2f} | {row['date']:<19} | "
+            f"{status_text(row['status']):<7} |"
         )
 
     if not order_rows:
-        lines.append("| No active orders.                                                                          |")
+        lines.append("| No active orders.                                                                                         |")
 
     lines += [
-        "-" * 95,
+        "-" * 105,
         "",
         "=== 3. การชำระเงิน (Payments) ===",
         "-" * 95,
@@ -116,11 +142,36 @@ def generate_report(products, orders, payments, activities):
         f"Cash       : {cash_count}",
         f"PromptPay  : {promptpay_count}",
         "",
-        "=== 6. Recent Activity ===",
+        "=== 6. Customer Order Summary ===",
+        "-" * 95,
+        "| Customer ID | Total Cups | Products Ordered",
+        "-" * 95,
+    ]
+
+    if customer_summary:
+        for customer_id in sorted(customer_summary):
+            summary = customer_summary[customer_id]
+            product_text = ", ".join(
+                f"{name} x{qty}"
+                for name, qty in summary["products"].items()
+            )
+            lines.append(
+                f"| {customer_id:<11} | {summary['total_cups']:<10} | {product_text}"
+            )
+    else:
+        lines.append("| No customer orders. |")
+
+    lines += [
+        "-" * 95,
+        f"Total Customers : {len(customer_summary)}",
+        f"Total Cups      : {sum(item['total_cups'] for item in customer_summary.values())}",
+        "",
+        "=== 7. Recent Activity ===",
         "-" * 32,
     ]
 
     recent = activities[-10:]
+
     if recent:
         for timestamp, action, entity, record_id in recent:
             lines.append(
@@ -131,10 +182,12 @@ def generate_report(products, orders, payments, activities):
 
     lines += [
         "",
-        "=" * 90,
-        "                              End of Report",
-        "=" * 90,
+        "=" * 100,
+        "                                  End of Report",
+        "=" * 100,
     ]
 
-    REPORT_FILE.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    REPORT_FILE.write_text("
+".join(lines) + "
+", encoding="utf-8")
     return REPORT_FILE

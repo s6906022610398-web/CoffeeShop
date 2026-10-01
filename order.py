@@ -4,14 +4,15 @@ from datetime import datetime
 from config import ORDER_FILE, STATUS_ACTIVE, FREE_NONE_Q
 from database import BinaryTable, decode_fixed, encode_fixed
 
-# Order record = 48 bytes
-# < i i i f 20s i Q
-ORDER_STRUCT = struct.Struct("<iiif20siQ")
+# Order record = 52 bytes
+# < i i i i f 20s i Q
+ORDER_STRUCT = struct.Struct("<iiiif20siQ")
 
 
 def pack_order(record):
     return ORDER_STRUCT.pack(
         record["id"],
+        record["customer_id"],
         record["product_id"],
         int(record["quantity"]),
         float(record["total"]),
@@ -22,12 +23,20 @@ def pack_order(record):
 
 
 def unpack_order(raw):
-    record_id, product_id, quantity, total, date, status, next_free = (
-        ORDER_STRUCT.unpack(raw)
-    )
+    (
+        record_id,
+        customer_id,
+        product_id,
+        quantity,
+        total,
+        date,
+        status,
+        next_free,
+    ) = ORDER_STRUCT.unpack(raw)
 
     return {
         "id": record_id,
+        "customer_id": customer_id,
         "product_id": product_id,
         "quantity": quantity,
         "total": total,
@@ -48,7 +57,9 @@ class OrderTable(BinaryTable):
         )
 
 
-def create_order(product_id, quantity, total):
+def create_order(customer_id, product_id, quantity, total):
+    if customer_id <= 0:
+        raise ValueError("Customer ID must be greater than 0.")
     if quantity <= 0:
         raise ValueError("Quantity must be greater than 0.")
     if total < 0:
@@ -56,7 +67,8 @@ def create_order(product_id, quantity, total):
 
     return {
         "id": 0,
-        "product_id": product_id,
+        "customer_id": int(customer_id),
+        "product_id": int(product_id),
         "quantity": int(quantity),
         "total": float(total),
         "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
