@@ -65,17 +65,28 @@ def print_products(products):
         print("\nNo products found.")
         return
 
-    print("\n" + "-" * 75)
-    print(f"{'ID':<8}{'Name':<25}{'Category':<17}{'Price':>10}")
-    print("-" * 75)
+        print("\n" + "-" * 90)
+    print(
+        f"{'ID':<8}"
+        f"{'Name':<25}"
+        f"{'Category':<17}"
+        f"{'Price':>10}"
+        f"{'Status':>12}"
+    )
+    print("-" * 90)
 
     for row in rows:
+        status = "Active" if row["status"] == 1 else "Deleted"
+
         print(
             f"{row['id']:<8}"
             f"{row['name']:<25}"
             f"{row['category']:<17}"
             f"{row['price']:>10.2f}"
+            f"{status:>12}"
         )
+
+    print("-" * 90)
 
     print("-" * 75)
 
